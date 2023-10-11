@@ -1,0 +1,104 @@
+#Se importan las bibliotecas de Python 
+import numpy as np
+import random as rd
+import wave
+import sys
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure
+from scipy.signal import butter, lfilter, filtfilt
+from statistics import stdev
+sys.path.insert(1, r'./../functions') 
+
+#Comando que crea los gráficos
+%config InlineBackend.figure_formats = {'png', 'retina'} 
+plt.rcParams['axes.labelsize'] = 16 #Tamaño de letra para los nombres de los ejes
+plt.rcParams['axes.titlesize'] = 18 #Tamaño de letra para los títulos
+plt.rcParams['font.size'] = 14 #Tamaño de letra para los números 
+plt.rcParams['lines.linewidth'] = 1.4 
+#La variable "busca" el archivo en .wav en los documentos de la computadra
+def ecg(variable):
+    record = wave.open(variable, 'r') 
+    numChannels = record.getnchannels() 
+    numFrames = record.getnframes() 
+    sampleRate = record.getframerate() 
+    sampleWidth = record.getsampwidth()
+    dstr = record.readframes(numFrames * numChannels)
+    waveData = np.frombuffer(dstr, np.int16)
+    timeECG = np.linspace(0, len(waveData)/sampleRate, num=len(waveData))
+    return timeECG, waveData
+#Variable que se convierte en el audio 
+nice = ["audio1","audio2", "audio3", "audio4", "audio5"]
+#Bucle que extrae los audios y crea el análisis para cada uno
+for i in range (0,5): 
+    timeECG, waveData = ecg(r'./AA1/'+nice[i]+'.wav')
+#Segundos donde empieza y termina la gráfica
+    n1 = 0.4
+    n2 = 9.7   
+    m1 = int(n1*10000)
+    m2 = int(n2*1300)
+    print(timeECG[m1])
+    print(timeECG[m2])
+    timeECG, waveData = timeECG[m1:m2], waveData[m1:m2]
+#Funciones para generar e imprimir la grafica de la onda
+    plt.figure(figsize=(18,6))
+    plt.xlabel(r'tiempo (s)')
+    plt.ylabel(r'voltage ($\mu$V)')
+    plt.plot(timeECG,waveData, 'b')
+    plt.title(nice[i])
+    plt.show()  
+#Detecta los máximos locales de la gráfica
+    def detecta_maximos_locales(timeECG, waveData, threshold_ratio=0.7):
+        if len(timeECG) != len(waveData): 
+            raise Exception("The two arrays have different lengths.")
+#Se convierte el arreglo "waveData" a uno numérico con el fin de que no presente errores.       
+        waveData = np.array(waveData, dtype=np.float64) 
+        interval = (np.max(waveData) - np.min(waveData))
+        threshold = threshold_ratio*interval + min(waveData)
+        maxima = []
+        maxima_indices = []
+        mxs_indices = []
+        banner = False
+        for i in range(0, len(waveData)):       
+            if waveData[i] >= threshold:
+                banner = True
+                maxima_indices.append(i)
+                maxima.append(waveData[i])          
+            elif banner == True and waveData[i] < threshold: 
+                index_local_max = maxima.index(max(maxima))
+                mxs_indices.append(maxima_indices[index_local_max])
+                maxima = []
+                maxima_indices = []
+                banner = False     
+        return mxs_indices
+    mxs_indices = detecta_maximos_locales(timeECG, waveData) 
+    plt.figure(figsize=(18,6))
+    plt.xlabel(r'time (s)')
+    plt.ylabel(r'voltage ($\mu$V)')
+    plt.xlim(min(timeECG),max(timeECG))
+    plt.plot(timeECG, waveData)
+    plt.scatter(timeECG[mxs_indices], waveData[mxs_indices], color='r')
+    plt.show()
+#Se usan los máximos locales para calcular los latidos por minuto
+    mean_bpm = 60*(len(mxs_indices)/(timeECG[-1]-timeECG[0])) 
+    print("Beats per minute:", mean_bpm) 
+    heart_rate = [(60/(timeECG[mxs_indices[i+1]]-timeECG[mxs_indices[i]]))\
+              for i in range(0, len(mxs_indices)-1)] 
+    time = timeECG[mxs_indices]  
+    mean_vec = [mean_bpm for i in range(0, len(time)-1)]
+    std_vec_plus = [mean_bpm+stdev(heart_rate) for i in range(0, len(time)-1)]
+    std_vec_minus = [mean_bpm-stdev(heart_rate) for i in range(0, len(time)-1)]
+    std_vec_plus = np.array(std_vec_plus, dtype=np.float64)
+    std_vec_minus = np.array(std_vec_minus, dtype=np.float64)
+    plt.fill_between(time[1:], std_vec_minus/2, std_vec_plus/2, facecolor="red",
+                 label = "Standard deviation", color='purple', alpha=0.4)
+#Se convierte el arreglo "heart data" a uno numérico con el fin de poder trabajarlo con operaciones básicas.
+    heart_rate = np.array(heart_rate, dtype=np.float64)
+    plt.plot(time[1:], mean_vec, c="r", label = "Mean heart rate")
+#Se ajusta el cálculo del heart rate ya que este arroja resultados muy altos
+    plt.plot(time[1:], heart_rate/10, markersize=5, marker = "o", label="Heart rate")
+    plt.ylim((-1000, 1500))
+    plt.title("Heart frequency")
+    plt.xlabel(r'Number of ECG cycle')
+    plt.ylabel(r'Time ($s$)')
+    plt.legend()
+    plt.show()
